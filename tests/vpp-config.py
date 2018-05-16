@@ -48,6 +48,39 @@ def getVhostPortMac(port):
 	cmd = 'vppctl show hardware {}'.format(port)
 	return string.splitfields(execCommand(cmd))[10]
 
+#Trevor: Add loop0 interface
+def createLoopIntf():
+        '''Create loop0 interface if not yet'''
+        cmd = 'vppctl show interface'
+        output = execCommand(cmd).split('\n')
+        for line in output:
+                if entry[0] == 'loop0':
+                        return
+        #Create loop0 interface
+        cmd = 'vppctl loopback create-interface'
+        output = execCommand(cmd) 
+
+        cmd = 'vppctl set interface state loop0 up'
+        execCommand(cmd)
+
+#Trevor: Set port IP address
+def setPortIP(port, portIP, maskLen):
+        ''' Set Port IP address '''
+        cmd = 'vppctl set interface ip address {} {}/{}'.format(port, portIP, maskLen)
+        execCommand(cmd)
+
+def setLoop0IP(portIP, maskLen):
+	'''Set loop0 IP addr '''
+	setPortIP(loop0, portIP, maskLen)
+
+#Trevor: set arp proxy range
+def setARPProxyRange(start, end):
+        '''Set ARP Proxy for address range'''
+        cmd = 'vppctl set ip arp proxy {} - {}'.format(start, end)
+        output = execCommand(cmd)
+        print(output)
+
+
 def configVhostPortRoute(port, containerIP, containerMAC):
 	'''Setup Routing rules for the Vhost User port's client'''
 	cmd = 'vppctl set int unnum {} use loop0'.format(port)
@@ -58,6 +91,15 @@ def configVhostPortRoute(port, containerIP, containerMAC):
 
 	cmd = 'vppctl set ip arp {} {} {}'.format(port, containerIP, containerMAC)
 	execCommand(cmd)
+
+	#Trevor: Enable arp proxy on the port
+	cmd = 'vppctl set interface proxy-arp {} enable'.format(port)
+	execCommand(cmd)
+
+	#Trevor: Enable arp proxy on containerIP
+	#setARPProxyRange(containerIP, containerIP)
+	cmd = 'vppctl set ip arp proxy {} - {}'.format(containerIP, containerIP)
+	output = execCommand(cmd)
 
 	tap = ''
 	cmd = 'vppctl show tap'
@@ -73,11 +115,17 @@ def configVhostPortRoute(port, containerIP, containerMAC):
 			break
 	return tap
 
+loopIntfInit = 0
+arpProxyInit = 0
+
 def main():
 	if (len(sys.argv) == 1):
 		print "Usage: ", sys.argv[0], "command [options]"
 		exit(1)
 
+	if loopIntfInit == 0:
+		createLoopIntf()
+		loopIntfInit = 1
 	if sys.argv[1] == 'create':
 		print createVhostPort(sys.argv[2])
 	elif sys.argv[1] == 'delete':
@@ -86,6 +134,8 @@ def main():
 		print getVhostPortMac(sys.argv[2])
 	elif sys.argv[1] == 'config':
 		print configVhostPortRoute(sys.argv[2], sys.argv[3], sys.argv[4])
+	elif sys.argv[1] == 'setarpproxy':
+		print setARPProxyRange(sys.argv[2], sys.argv[3])
 	else:
 		print "Not supported yet!"
 
